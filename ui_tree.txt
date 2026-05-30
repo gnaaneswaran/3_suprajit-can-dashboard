@@ -1,0 +1,242 @@
+Folder PATH listing for volume Windows
+Volume serial number is CA9B-F22D
+C:\USERS\GNAANESWARAN\ONEDRIVE\DESKTOP\GNAANESWARAN\1.SUPRAJIT\SUPRAJIT-CAN-ANALYZER\UI
+¦   analog_cluster.py
+¦   app_core.py
+¦   controls_panel.py
+¦   digital_cluster.py
+¦   hybrid_cluster.py
+¦   main_window.py
+¦   __init__.py
+¦   
++---controls
+¦       control_button.py
+¦       drive_mode_panel.py
+¦       energy_panel.py
+¦       toggle_button.py
+¦       vehicle_state_panel.py
+¦       __init__.py
+¦       
++---core
+¦   ¦   event_bus.py
+¦   ¦   ui_state.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---__pycache__
+¦           __init__.cpython-314.pyc
+¦           
++---oem_analog
+¦   ¦   analog_screen.py
+¦   ¦   analog_shell.py
+¦   ¦   bezel_layer.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---core
+¦   ¦   ¦   serial_reader.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           serial_reader.cpython-311.pyc
+¦   ¦           serial_reader.cpython-314.pyc
+¦   ¦           __init__.cpython-311.pyc
+¦   ¦           __init__.cpython-314.pyc
+¦   ¦           
+¦   +---widgets
+¦   ¦   ¦   center_hub.py
+¦   ¦   ¦   fuel_gauge.py
+¦   ¦   ¦   indicator_panel.py
+¦   ¦   ¦   odo_display.py
+¦   ¦   ¦   speed_arc.py
+¦   ¦   ¦   speed_needle.py
+¦   ¦   ¦   speed_ticks.py
+¦   ¦   ¦   warning_icons.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           fuel_gauge.cpython-311.pyc
+¦   ¦           fuel_gauge.cpython-314.pyc
+¦   ¦           indicator_panel.cpython-311.pyc
+¦   ¦           indicator_panel.cpython-314.pyc
+¦   ¦           odo_display.cpython-311.pyc
+¦   ¦           odo_display.cpython-314.pyc
+¦   ¦           speed_arc.cpython-311.pyc
+¦   ¦           speed_arc.cpython-314.pyc
+¦   ¦           speed_needle.cpython-311.pyc
+¦   ¦           speed_needle.cpython-314.pyc
+¦   ¦           speed_ticks.cpython-311.pyc
+¦   ¦           speed_ticks.cpython-314.pyc
+¦   ¦           warning_icons.cpython-311.pyc
+¦   ¦           warning_icons.cpython-314.pyc
+¦   ¦           __init__.cpython-311.pyc
+¦   ¦           __init__.cpython-314.pyc
+¦   ¦           
+¦   +---__pycache__
+¦           analog_screen.cpython-311.pyc
+¦           analog_screen.cpython-314.pyc
+¦           analog_shell.cpython-311.pyc
+¦           analog_shell.cpython-314.pyc
+¦           __init__.cpython-311.pyc
+¦           __init__.cpython-314.pyc
+¦           
++---oem_digital
+¦   ¦   cluster_shell.py
+¦   ¦   glass_layer.py
+¦   ¦   main.py
+¦   ¦   tft_screen.py
+¦   ¦   
+¦   +---animations
+¦   ¦       fade_transition.py
+¦   ¦       __init__.py
+¦   ¦       
+¦   +---layers
+¦   ¦       overlay_layer.py
+¦   ¦       __init__.py
+¦   ¦       
+¦   +---layouts
+¦   ¦       cluster_layout.py
+¦   ¦       __init__.py
+¦   ¦       
+¦   +---navigation
+¦   ¦       route_provider.py
+¦   ¦       __init__.py
+¦   ¦       
+¦   +---overlays
+¦   ¦       charging_overlay.py
+¦   ¦       __init__.py
+¦   ¦       
+¦   +---renderers
+¦   ¦       base_renderer.py
+¦   ¦       __init__.py
+¦   ¦       
+¦   +---screens
+¦   ¦   ¦   bluetooth_screen.py
+¦   ¦   ¦   home_screen.py
+¦   ¦   ¦   menu_screen.py
+¦   ¦   ¦   navigation_screen.py
+¦   ¦   ¦   ride_stats_screen.py
+¦   ¦   ¦   settings_screen.py
+¦   ¦   ¦   vehicle_screen.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           bluetooth_screen.cpython-311.pyc
+¦   ¦           bluetooth_screen.cpython-314.pyc
+¦   ¦           home_screen.cpython-311.pyc
+¦   ¦           home_screen.cpython-314.pyc
+¦   ¦           menu_screen.cpython-311.pyc
+¦   ¦           menu_screen.cpython-314.pyc
+¦   ¦           navigation_screen.cpython-311.pyc
+¦   ¦           navigation_screen.cpython-314.pyc
+¦   ¦           ride_stats_screen.cpython-311.pyc
+¦   ¦           ride_stats_screen.cpython-314.pyc
+¦   ¦           settings_screen.cpython-311.pyc
+¦   ¦           settings_screen.cpython-314.pyc
+¦   ¦           vehicle_screen.cpython-311.pyc
+¦   ¦           vehicle_screen.cpython-314.pyc
+¦   ¦           __init__.cpython-311.pyc
+¦   ¦           __init__.cpython-314.pyc
+¦   ¦           
+¦   +---services
+¦   ¦   ¦   screen_manager.py
+¦   ¦   ¦   vehicle_state.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           screen_manager.cpython-311.pyc
+¦   ¦           screen_manager.cpython-314.pyc
+¦   ¦           vehicle_state.cpython-311.pyc
+¦   ¦           vehicle_state.cpython-314.pyc
+¦   ¦           __init__.cpython-311.pyc
+¦   ¦           __init__.cpython-314.pyc
+¦   ¦           
+¦   +---themes
+¦   ¦       __init__.py
+¦   ¦       
+¦   +---touch
+¦   ¦       __init__.py
+¦   ¦       
+¦   +---widgets
+¦   ¦   ¦   osm_map_widget.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           osm_map_widget.cpython-311.pyc
+¦   ¦           osm_map_widget.cpython-314.pyc
+¦   ¦           
+¦   +---__pycache__
+¦           cluster_shell.cpython-311.pyc
+¦           cluster_shell.cpython-314.pyc
+¦           glass_layer.cpython-311.pyc
+¦           glass_layer.cpython-314.pyc
+¦           tft_screen.cpython-311.pyc
+¦           tft_screen.cpython-314.pyc
+¦           
++---oem_hybrid
+¦   ¦   hybrid_screen.py
+¦   ¦   hybrid_shell.py
+¦   ¦   __init__.py
+¦   ¦   
+¦   +---core
+¦   ¦   ¦   can_frame.py
+¦   ¦   ¦   frame_buffer.py
+¦   ¦   ¦   location.py
+¦   ¦   ¦   palette.py
+¦   ¦   ¦   serial_reader.py
+¦   ¦   ¦   vehicle_simulator.py
+¦   ¦   ¦   vehicle_state.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           location.cpython-311.pyc
+¦   ¦           location.cpython-314.pyc
+¦   ¦           palette.cpython-311.pyc
+¦   ¦           palette.cpython-314.pyc
+¦   ¦           serial_reader.cpython-311.pyc
+¦   ¦           serial_reader.cpython-314.pyc
+¦   ¦           vehicle_simulator.cpython-314.pyc
+¦   ¦           vehicle_state.cpython-311.pyc
+¦   ¦           vehicle_state.cpython-314.pyc
+¦   ¦           __init__.cpython-311.pyc
+¦   ¦           __init__.cpython-314.pyc
+¦   ¦           
+¦   +---widgets
+¦   ¦   ¦   indicator_strip.py
+¦   ¦   ¦   lcd_panel.py
+¦   ¦   ¦   painter_icons.py
+¦   ¦   ¦   speedometer.py
+¦   ¦   ¦   status_strip.py
+¦   ¦   ¦   stat_bar.py
+¦   ¦   ¦   __init__.py
+¦   ¦   ¦   
+¦   ¦   +---__pycache__
+¦   ¦           indicator_strip.cpython-311.pyc
+¦   ¦           indicator_strip.cpython-314.pyc
+¦   ¦           lcd_panel.cpython-311.pyc
+¦   ¦           lcd_panel.cpython-314.pyc
+¦   ¦           painter_icons.cpython-311.pyc
+¦   ¦           painter_icons.cpython-314.pyc
+¦   ¦           speedometer.cpython-311.pyc
+¦   ¦           speedometer.cpython-314.pyc
+¦   ¦           status_strip.cpython-311.pyc
+¦   ¦           status_strip.cpython-314.pyc
+¦   ¦           stat_bar.cpython-311.pyc
+¦   ¦           stat_bar.cpython-314.pyc
+¦   ¦           __init__.cpython-311.pyc
+¦   ¦           __init__.cpython-314.pyc
+¦   ¦           
+¦   +---__pycache__
+¦           hybrid_screen.cpython-311.pyc
+¦           hybrid_screen.cpython-314.pyc
+¦           hybrid_shell.cpython-311.pyc
+¦           hybrid_shell.cpython-314.pyc
+¦           __init__.cpython-311.pyc
+¦           __init__.cpython-314.pyc
+¦           
++---shared
+¦   +---fonts
+¦   +---icons
+¦   +---themes
+¦   +---widgets
++---themes
+        palette.py
+        __init__.py
+        

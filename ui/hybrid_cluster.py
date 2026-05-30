@@ -1,0 +1,2 @@
+from ui.oem_hybrid.hybrid_screen import HybridCluster
+HybridClusterWidget = HybridCluster
