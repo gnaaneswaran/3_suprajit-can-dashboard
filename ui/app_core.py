@@ -1,4 +1,4 @@
-from ui.oem_hybrid.core.vehicle_state import (
+from core.vehicle_state import ( # pyright: ignore[reportMissingImports]
     VehicleState
 )
 

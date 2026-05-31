@@ -12,7 +12,8 @@ from ui.oem_hybrid.core.palette          import P
 from ui.oem_hybrid.core.location         import _Loc
 from ui.oem_hybrid.widgets.painter_icons import BTIconWidget, FuelIconWidget, LocIconWidget
 from ui.oem_hybrid.widgets.status_strip  import StatusStrip
-from ui.oem_hybrid.core.vehicle_state    import VehicleState
+from core.vehicle_state import VehicleState
+from core.vehicle_state import vehicle_state
 
 
 class LCDPanel(QWidget):

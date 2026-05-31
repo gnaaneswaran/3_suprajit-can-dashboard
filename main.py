@@ -22,7 +22,7 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore    import Qt, QTimer
 
 from ui.main_window                          import MainWindow
-from ui.oem_hybrid.core.vehicle_state        import vehicle_state as vs
+from core.vehicle_state import vehicle_state as vs
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 TICK_MS   = 30
@@ -104,7 +104,8 @@ def _physics_tick(win):
     vs.trip       += dist_km
     vs.top_speed   = max(vs.top_speed, vs.speed)
     vs.engine_temp = vs.temp
-    vs._update_range()
+    # Range update disabled temporarily due to fuel gauge changes
+    # vs.range_km    = max(0.0, vs.fuel * (300.0 / 100.0))
 
     if vs.speed > 2.0:
         vs._side_stand     = False

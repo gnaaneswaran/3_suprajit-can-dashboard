@@ -12,8 +12,12 @@ from core.decoder                            import decode_frame
 from core.can_frame                          import CANFrame
 from core.event_dispatcher                   import dispatcher
 from core.logger                             import can_logger
-from ui.oem_analog.core.serial_reader        import SerialReader # pyright: ignore[reportMissingImports]
-from ui.oem_hybrid.core.vehicle_state        import vehicle_state as vs
+
+# ── FIXED: single centralised hardware + state imports ────────────────────────
+from hardware.serial_reader                  import SerialReader      # was: ui.oem_analog.core.serial_reader
+from core.vehicle_state                      import vehicle_state as vs  # was: ui.oem_hybrid.core.vehicle_state
+# ─────────────────────────────────────────────────────────────────────────────
+
 from ui.controls_panel                       import ControlsPanel
 from ui.digital_cluster                      import DigitalClusterWidget
 from ui.analog_cluster                       import AnalogClusterWidget
@@ -89,7 +93,6 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        # ── Serial reader (reads from ui/oem_analog/core/serial_reader.py) ───
         self.serial_reader = SerialReader()
 
         self.setWindowTitle("Suprajit CAN Bus Analyzer")
@@ -275,7 +278,7 @@ class MainWindow(QMainWindow):
         self._status_bus.setText("OFF")
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Physics tick — only used when launched standalone not via main.py
+    # Physics tick
     # ─────────────────────────────────────────────────────────────────────────
 
     def _physics_tick(self):
@@ -311,6 +314,10 @@ class MainWindow(QMainWindow):
             vs.fuel = max(0.0, min(100.0, vs.fuel - vs.speed * 0.0008))
         vs.battery = vs.fuel
 
+        # ── derive voltage / current from speed so telemetry bar is live ─────
+        vs.voltage = 48.0 + (vs.speed / 85.0) * 4.0        # 48–52 V range
+        vs.current = (vs.speed / 85.0) * 25.0               # 0–25 A
+
         self.ctrl_panel.update_indicators(bool(vs.throttle), bool(vs.brake))
 
         self.digital_cluster.update()
@@ -328,7 +335,7 @@ class MainWindow(QMainWindow):
         self._update_navigation_map()
 
     # ─────────────────────────────────────────────────────────────────────────
-    # CAN table tick
+    # CAN table tick — also feeds the hybrid cluster's CAN strip
     # ─────────────────────────────────────────────────────────────────────────
 
     def _can_tick(self):
@@ -342,11 +349,20 @@ class MainWindow(QMainWindow):
         dispatcher.publish_all(signals)
         can_logger.log(frame, signals)
 
+        # ── Feed the hybrid cluster's live CAN strip ──────────────────────────
+        parts = line.split(",")
+        if len(parts) == 4:
+            ts, can_id, dlc, data = parts
+            try:
+                self.hybrid_cluster.push_can_frame(can_id, int(dlc), data, ts)
+            except Exception:
+                pass
+
+        # ── Table view update ─────────────────────────────────────────────────
         if self.stack.currentIndex() == 0:
-            parts = line.split(",")
             if len(parts) != 4:
                 return
-            timestamp, can_id, dlc, data = parts
+            ts, can_id, dlc, data = parts
             if self._filter_id == "" or self._filter_id.lower() in can_id.lower():
                 bg_col, fg_col = ROW_COLORS.get(can_id, ("#0a0f1e", "#e2e8f0"))
                 row = self.table.rowCount()
@@ -354,7 +370,7 @@ class MainWindow(QMainWindow):
                     self.table.removeRow(0)
                     row = self.table.rowCount()
                 self.table.insertRow(row)
-                for col_i, text in enumerate([timestamp, can_id, dlc, data]):
+                for col_i, text in enumerate([ts, can_id, dlc, data]):
                     item = QTableWidgetItem(text)
                     item.setForeground(QColor(fg_col))
                     item.setBackground(QColor(bg_col))

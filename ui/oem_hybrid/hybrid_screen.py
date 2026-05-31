@@ -6,8 +6,9 @@ from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout,
                               QLabel, QSizePolicy)
 from datetime        import datetime
 
-from ui.oem_hybrid.core.palette            import P
-from ui.oem_hybrid.core.vehicle_state      import VehicleState
+import ui.oem_hybrid.core.palette
+from core.vehicle_state import VehicleState
+from core.vehicle_state import vehicle_state 
 from ui.oem_hybrid.core.location           import _Loc
 from ui.oem_hybrid.hybrid_shell            import ClusterHousing
 from ui.oem_hybrid.widgets.speedometer     import SpeedometerWidget
@@ -26,8 +27,8 @@ class HybridCluster(QWidget):
         self.vehicle = VehicleState()
 
         self.setStyleSheet(
-            f"QWidget {{ background: {P['shell_outer']};"
-            f" color: {P['text_primary']}; font-family: 'Segoe UI'; }}"
+            f"QWidget {{ background: {ui.oem_hybrid.core.palette.P['shell_outer']};"
+            f" color: {ui.oem_hybrid.core.palette.P['text_primary']}; font-family: 'Segoe UI'; }}"
             " QLabel { background: transparent; }")
 
         self._build_ui()
@@ -53,29 +54,29 @@ class HybridCluster(QWidget):
         hdr = QFrame()
         hdr.setFixedHeight(42)
         hdr.setStyleSheet(
-            f"background: {P['shell_inner']};"
-            f" border-bottom: 1px solid {P['bezel_outer']};")
+            f"background: {ui.oem_hybrid.core.palette.P['shell_inner']};"
+            f" border-bottom: 1px solid {ui.oem_hybrid.core.palette.P['bezel_outer']};")
         hl = QHBoxLayout(hdr)
         hl.setContentsMargins(14, 0, 14, 0)
 
         logo = QLabel("SUPRAJIT")
         logo.setStyleSheet(
-            f"color: {P['text_primary']}; font-size: 18px;"
+            f"color: {ui.oem_hybrid.core.palette.P['text_primary']}; font-size: 18px;"
             " font-weight: bold; letter-spacing: 3px; background: transparent;")
 
         tag = QLabel("HYBRID CLUSTER")
         tag.setStyleSheet(
-            f"color: {P['text_muted']}; font-size: 8px;"
+            f"color: {ui.oem_hybrid.core.palette.P['text_muted']}; font-size: 8px;"
             " letter-spacing: 3px; background: transparent;")
 
         self._hdr_time = QLabel("--:--")
         self._hdr_time.setFont(QFont("Courier New", 12, QFont.Bold))
         self._hdr_time.setStyleSheet(
-            f"color: {P['tick_label']}; background: transparent;")
+            f"color: {ui.oem_hybrid.core.palette.P['tick_label']}; background: transparent;")
 
         live = QLabel("● LIVE")
         live.setStyleSheet(
-            f"color: {P['arc_green']}; font-size: 8px;"
+            f"color: {ui.oem_hybrid.core.palette.P['arc_green']}; font-size: 8px;"
             " font-weight: bold; background: transparent;")
 
         hl.addWidget(logo)

@@ -335,7 +335,7 @@ class HomeScreen:
         p.setPen(_WHITE)
         p.setFont(_font(16, bold=True))
         p.drawText(QRect(x + 12, y + 164, pw - 24, 26), Qt.AlignLeft,
-                   state.ride_mode)
+           str(state.ride_mode))
 
     def _draw_speed(self, p, state, W, H):
         cw = int(W * 0.44)
