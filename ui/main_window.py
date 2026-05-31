@@ -1,21 +1,39 @@
+"""
+ui/main_window.py
+─────────────────────────────────────────────────────────────────────────────
+Suprajit CAN Bus Analyzer — Main Window
+
+Fixes applied
+─────────────────────────────────────────────────────────────────────────────
+  ✓ SerialReader imported from hardware.serial_reader  (was ui.oem_analog.core.serial_reader)
+  ✓ vehicle_state imported from core.vehicle_state     (was ui.oem_hybrid.core.vehicle_state)
+  ✓ Duplicate import block removed (was imported twice)
+  ✓ physics_engine.tick() called here — NOT inside DigitalClusterWidget
+  ✓ All three clusters read the same vs singleton — hardware data visible everywhere
+─────────────────────────────────────────────────────────────────────────────
+"""
+
+import time
+
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QLineEdit,
-    QHeaderView, QStackedWidget
+    QHeaderView, QStackedWidget,
 )
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui  import QColor
 
-from core.fake_data                          import fake_data_generator
-from core.decoder                            import decode_frame
-from core.can_frame                          import CANFrame
-from core.event_dispatcher                   import dispatcher
-from core.logger                             import can_logger
+from core.fake_data        import fake_data_generator
+from core.decoder          import decode_frame
+from core.can_frame        import CANFrame
+from core.event_dispatcher import dispatcher
+from core.logger           import can_logger
+from core               import physics_engine           # physics tick lives here
 
-# ── FIXED: single centralised hardware + state imports ────────────────────────
-from hardware.serial_reader                  import SerialReader      # was: ui.oem_analog.core.serial_reader
-from core.vehicle_state                      import vehicle_state as vs  # was: ui.oem_hybrid.core.vehicle_state
+# ── Single correct imports — no duplicates ────────────────────────────────────
+from hardware.serial_reader import SerialReader          # fixed path
+from core.vehicle_state     import vehicle_state as vs   # fixed path
 # ─────────────────────────────────────────────────────────────────────────────
 
 from ui.controls_panel                       import ControlsPanel
@@ -68,12 +86,14 @@ QMainWindow, QWidget {
 #liveTag      { color: #22c55e; font-size: 9px; font-weight: bold; letter-spacing: 1px; }
 QTableWidget  {
     background-color: #0a0f1e; gridline-color: #1e293b;
-    border: none; font-size: 11px; selection-background-color: #1e3a5f;
+    border: none; font-size: 11px;
+    selection-background-color: #1e3a5f;
 }
-QTableWidget::item     { padding: 3px 8px; border-bottom: 1px solid #0f172a; }
-QHeaderView::section   {
+QTableWidget::item   { padding: 3px 8px; border-bottom: 1px solid #0f172a; }
+QHeaderView::section {
     background-color: #0f172a; color: #475569; font-size: 9px;
-    font-weight: bold; padding: 5px 8px; border: none; border-right: 1px solid #1e293b;
+    font-weight: bold; padding: 5px 8px;
+    border: none; border-right: 1px solid #1e293b;
 }
 #statusBar    { background-color: #060c18; border-top: 1px solid #1e293b; }
 #statusLabel  { color: #334155; font-size: 9px; }
@@ -87,27 +107,34 @@ ROW_COLORS = {
     "0x300": ("#2a0f0f", "#f87171"),
 }
 
+# Physics tick interval in milliseconds
+_PHYSICS_INTERVAL_MS = 30
+
 
 class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
 
-        self.serial_reader = SerialReader()
+        # ── Hardware ──────────────────────────────────────────────────────────
+        self.serial_reader = SerialReader()   # auto-detects COM port
 
         self.setWindowTitle("Suprajit CAN Bus Analyzer")
         self.setMinimumSize(1280, 760)
         self.setStyleSheet(STYLE)
 
-        self.data_gen   = fake_data_generator()
-        self._running   = False
-        self._filter_id = ""
-        self._row_limit = 200
+        self.data_gen    = fake_data_generator()
+        self._running    = False
+        self._filter_id  = ""
+        self._row_limit  = 200
+        self._last_tick_s = time.perf_counter()
 
+        # Physics timer — ONE loop for the entire app
         self._physics_timer = QTimer()
-        self._physics_timer.setInterval(30)
+        self._physics_timer.setInterval(_PHYSICS_INTERVAL_MS)
         self._physics_timer.timeout.connect(self._physics_tick)
 
+        # Navigation map overlay
         self.map_widget = OSMMapWidget(self)
         self.map_widget.setGeometry(36, 240, 1525, 525)
         self.map_widget.hide()
@@ -143,10 +170,9 @@ class MainWindow(QMainWindow):
         bar.setObjectName("headerBar")
         bar.setFixedHeight(44)
         lay = QHBoxLayout(bar)
-        brand = QLabel("SUPRAJIT");  brand.setObjectName("brandLabel")
+        brand = QLabel("SUPRAJIT"); brand.setObjectName("brandLabel")
         app   = QLabel("CAN BUS ANALYZER"); app.setObjectName("appLabel")
         lay.addWidget(brand); lay.addWidget(app); lay.addStretch()
-
         self.btn_table   = QPushButton("▦ TABLE VIEW")
         self.btn_cluster = QPushButton("⊙ CLUSTER VIEW")
         for btn in [self.btn_table, self.btn_cluster]:
@@ -167,7 +193,6 @@ class MainWindow(QMainWindow):
         t2  = QLabel("● LIVE DATA");        t2.setObjectName("liveTag")
         sl.addWidget(t1); sl.addStretch(); sl.addWidget(t2)
         lay.addWidget(sub)
-
         self.stack = QStackedWidget()
         self.stack.addWidget(self._make_table_page())
         self.stack.addWidget(self._make_cluster_page())
@@ -222,7 +247,7 @@ class MainWindow(QMainWindow):
         lay = QHBoxLayout(bar)
         for key in ["SPEED", "FUEL", "TEMP", "BUS"]:
             col = QVBoxLayout()
-            lbl = QLabel(key); lbl.setObjectName("statusLabel")
+            lbl = QLabel(key);  lbl.setObjectName("statusLabel")
             val = QLabel("--"); val.setObjectName("statusValue")
             col.addWidget(lbl); col.addWidget(val)
             setattr(self, f"_status_{key.lower()}", val)
@@ -234,7 +259,7 @@ class MainWindow(QMainWindow):
     # View switching
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _switch_view(self, idx):
+    def _switch_view(self, idx: int) -> None:
         self.stack.setCurrentIndex(idx)
         self.btn_table.setChecked(idx == 0)
         self.btn_cluster.setChecked(idx == 1)
@@ -243,7 +268,7 @@ class MainWindow(QMainWindow):
     # Navigation map
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _update_navigation_map(self):
+    def _update_navigation_map(self) -> None:
         try:
             current = self.digital_cluster._sm.current_screen
         except Exception:
@@ -257,20 +282,18 @@ class MainWindow(QMainWindow):
     # Start / stop
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _start(self):
+    def _start(self) -> None:
         if self._running:
             return
         self._running = True
         can_logger.start()
         self._physics_timer.start()
-
         self.can_timer = QTimer()
         self.can_timer.timeout.connect(self._can_tick)
         self.can_timer.start(80)
-
         self._status_bus.setText("ON")
 
-    def _stop(self):
+    def _stop(self) -> None:
         if hasattr(self, "can_timer"):
             self.can_timer.stop()
         self._physics_timer.stop()
@@ -278,10 +301,15 @@ class MainWindow(QMainWindow):
         self._status_bus.setText("OFF")
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Physics tick
+    # Physics tick — THE ONLY PLACE physics_engine.tick() is called
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _physics_tick(self):
+    def _physics_tick(self) -> None:
+        now  = time.perf_counter()
+        dt   = now - self._last_tick_s
+        self._last_tick_s = now
+        dt   = min(dt, 0.1)   # cap at 100 ms to avoid jumps
+
         sr  = self.serial_reader
         adc = sr.value
 
@@ -289,45 +317,52 @@ class MainWindow(QMainWindow):
             adc = 0
         adc = max(0, min(4095, adc))
 
-        target_speed = (adc / 4095.0) * 85.0
-        vs.speed += (target_speed - vs.speed) * 0.15
+        # ── Hardware-driven speed target ──────────────────────────────────────
+        # Potentiometer ADC → 0-85 km/h target.
+        # physics_engine.tick() will then ramp vs.speed toward this.
+        vs.throttle = (adc / 4095.0) * 100.0   # 0-100 %
 
+        # Brake from controls panel (already set by stateChanged signal)
         if vs.brake:
-            vs.speed *= 0.85
-        vs.speed = max(0.0, min(85.0, vs.speed))
+            vs.speed *= (1.0 - 0.15 * (dt / 0.030))
 
+        # ── Physics step — odometry, battery, range, efficiency ───────────────
+        # This is the single call to physics_engine.tick() for the whole app.
+        physics_engine.tick(dt)
+
+        # ── Derived thermal / electrical values ───────────────────────────────
         vs.temp        = 42.0 + vs.speed * 0.75
         vs.rpm         = 1200.0 + vs.speed * 75.0
         vs.engine_temp = vs.temp
         vs.lean        = 0.0
 
-        if vs.speed > 2.0:
-            vs._side_stand = False
+        # Voltage / current (live telemetry bar in hybrid cluster)
+        vs.voltage = 48.0 + (vs.speed / 90.0) * 4.0     # 48-52 V
+        vs.current = (vs.speed / 90.0) * 25.0            # 0-25 A
 
-        dt = 0.030
-        dist_km      = (vs.speed * dt) / 3600.0
-        vs.odometer += dist_km
-        vs.odo       = vs.odometer
-        vs.trip     += dist_km
+        # Fuel mirrors battery (analog cluster shows fuel gauge)
+        vs.fuel    = vs.battery
+        vs.odo     = vs.odometer                          # keep alias in sync
 
-        if adc > 150:
-            vs.fuel = max(0.0, min(100.0, vs.fuel - vs.speed * 0.0008))
-        vs.battery = vs.fuel
+        if sr.connected:
+            print(f"[HW] ADC={adc:4d}  THROTTLE={vs.throttle:.1f}%  SPEED={vs.speed:.1f}")
 
-        # ── derive voltage / current from speed so telemetry bar is live ─────
-        vs.voltage = 48.0 + (vs.speed / 85.0) * 4.0        # 48–52 V range
-        vs.current = (vs.speed / 85.0) * 25.0               # 0–25 A
-
+        # ── Update controls panel LED indicators ──────────────────────────────
         self.ctrl_panel.update_indicators(bool(vs.throttle), bool(vs.brake))
 
+        # ── Repaint all three clusters ────────────────────────────────────────
+        # Digital: pure renderer — just call update()
         self.digital_cluster.update()
 
+        # Analog: uses push model via set_data()
         self.analog_cluster.set_data(
             vs.speed, vs.fuel, vs.temp, vs.rpm, vs.odometer, vs.trip)
 
+        # Hybrid: uses push model via set_data() (writes into vs singleton)
         self.hybrid_cluster.set_data(
             vs.speed, vs.fuel, vs.temp, vs.rpm, vs.odometer, vs.trip)
 
+        # ── Bottom status bar ─────────────────────────────────────────────────
         self._status_speed.setText(f"{int(vs.speed)} km/h")
         self._status_fuel.setText(f"{int(vs.fuel)}%")
         self._status_temp.setText(f"{int(vs.temp)}°C")
@@ -335,10 +370,10 @@ class MainWindow(QMainWindow):
         self._update_navigation_map()
 
     # ─────────────────────────────────────────────────────────────────────────
-    # CAN table tick — also feeds the hybrid cluster's CAN strip
+    # CAN tick — feeds table view and hybrid cluster CAN strip
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _can_tick(self):
+    def _can_tick(self) -> None:
         line = next(self.data_gen)
         try:
             frame = CANFrame.from_string(line)
@@ -349,7 +384,6 @@ class MainWindow(QMainWindow):
         dispatcher.publish_all(signals)
         can_logger.log(frame, signals)
 
-        # ── Feed the hybrid cluster's live CAN strip ──────────────────────────
         parts = line.split(",")
         if len(parts) == 4:
             ts, can_id, dlc, data = parts
@@ -358,7 +392,6 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-        # ── Table view update ─────────────────────────────────────────────────
         if self.stack.currentIndex() == 0:
             if len(parts) != 4:
                 return

@@ -3,8 +3,8 @@ main.py — Suprajit CAN Bus Analyzer
 Single entry point. Run this file only.
 
 Hardware path:
-  ESP32 → USB Serial → SerialReader (background thread) → vehicle_state
-  → _physics_tick (30 ms QTimer) → all clusters
+  ESP32 → USB Serial → SerialReader (background thread) → vs.speed
+  → _physics_tick (30ms QTimer) → all clusters
 
 Fallback (no hardware):
   keyboard Up/Down → _physics_tick → all clusters
@@ -21,68 +21,55 @@ for p in (ROOT, OEM_DIR):
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore    import Qt, QTimer
 
-from ui.main_window                          import MainWindow
-from core.vehicle_state import vehicle_state as vs
+from ui.main_window          import MainWindow
+from core.vehicle_state      import vehicle_state as vs   # ← FIXED: was ui.oem_hybrid.core.vehicle_state
 
-# ── Constants ─────────────────────────────────────────────────────────────────
 TICK_MS   = 30
 TICK_S    = TICK_MS / 1000.0
 MAX_SPEED = 85.0
 
-# ── Keyboard state (fallback when no hardware) ────────────────────────────────
 pressed = {"up": False, "down": False}
 
 
-# ── Keyboard wiring ───────────────────────────────────────────────────────────
 def _wire_keys(win):
     def kp(e):
         k = e.key()
-        if k == Qt.Key_Up:      pressed["up"]   = True
-        elif k == Qt.Key_Down:  pressed["down"] = True
-        else:                   type(win).keyPressEvent(win, e)
+        if k == Qt.Key_Up:     pressed["up"]   = True
+        elif k == Qt.Key_Down: pressed["down"] = True
+        else:                  type(win).keyPressEvent(win, e)
 
     def kr(e):
         k = e.key()
-        if k == Qt.Key_Up:      pressed["up"]   = False
-        elif k == Qt.Key_Down:  pressed["down"] = False
-        else:                   type(win).keyReleaseEvent(win, e)
+        if k == Qt.Key_Up:     pressed["up"]   = False
+        elif k == Qt.Key_Down: pressed["down"] = False
+        else:                  type(win).keyReleaseEvent(win, e)
 
     win.keyPressEvent   = kp
     win.keyReleaseEvent = kr
 
 
-# ── Physics tick ──────────────────────────────────────────────────────────────
 def _physics_tick(win):
     sr = win.serial_reader
 
     if sr.connected and sr.serial and sr.serial.is_open:
-        # ── HARDWARE PATH (Potentiometer via ESP32) ──────────────────────
-        adc    = sr.value
-        POT_MIN = 300
-        POT_MAX = 4255
+        # ── HARDWARE PATH ────────────────────────────────────────
+        adc = sr.value
+        POT_MIN, POT_MAX = 150, 4095
         adc_clamped = max(POT_MIN, min(POT_MAX, adc))
         target = ((adc_clamped - POT_MIN) / (POT_MAX - POT_MIN)) * MAX_SPEED
 
         vs.speed += (target - vs.speed) * 0.18
-
         if vs.brake:
             vs.speed *= 0.82
-
         vs.speed = max(0.0, min(MAX_SPEED, vs.speed))
 
-        if adc > 150:
-            vs.fuel = max(0.0, min(100.0, vs.fuel - vs.speed * 0.0008))
+        if adc > POT_MIN:
+            vs.fuel = max(0.0, min(100.0, vs.fuel - vs.speed * 0.0008 * TICK_S / 0.030))
 
-        vs.battery     = vs.fuel
-        vs.temp        = 42.0 + vs.speed * 0.75
-        vs.rpm         = 1200.0 + vs.speed * 75.0
-        vs.lean        = 0.0
-        vs.engine_temp = vs.temp
-
-        print(f"ADC={adc:4d}  TARGET={target:5.1f}  SPEED={vs.speed:5.1f}")
+        print(f"[HW] ADC={adc:4d}  TARGET={target:5.1f}  SPEED={vs.speed:5.1f}")
 
     else:
-        # ── KEYBOARD FALLBACK ────────────────────────────────────────────
+        # ── KEYBOARD FALLBACK ────────────────────────────────────
         if pressed["up"]:
             vs.speed = min(MAX_SPEED, vs.speed + 6.9 * TICK_S)
         elif pressed["down"]:
@@ -90,35 +77,39 @@ def _physics_tick(win):
         else:
             vs.speed = max(0.0, vs.speed - 1.4 * TICK_S)
 
-        vs.temp    = 42.0 + vs.speed * 0.75
-        vs.rpm     = 1200.0 + vs.speed * 75.0
-
         if vs.fuel > 0 and vs.speed > 1:
-            vs.fuel    = max(0.0, vs.fuel - vs.speed * 0.0008)
-            vs.battery = vs.fuel
+            vs.fuel    = max(0.0, vs.fuel - vs.speed * 0.0008 * TICK_S / 0.030)
 
-    # ── Shared derived values ─────────────────────────────────────────────
+    # ── Derived values (both paths) ──────────────────────────────
+    vs.battery     = vs.fuel
+    vs.temp        = 42.0 + vs.speed * 0.75
+    vs.engine_temp = vs.temp
+    vs.rpm         = 1200.0 + vs.speed * 75.0
+
     dist_km        = (vs.speed * TICK_S) / 3600.0
     vs.odometer   += dist_km
     vs.odo         = vs.odometer
     vs.trip       += dist_km
     vs.top_speed   = max(vs.top_speed, vs.speed)
-    vs.engine_temp = vs.temp
-    # Range update disabled temporarily due to fuel gauge changes
-    # vs.range_km    = max(0.0, vs.fuel * (300.0 / 100.0))
+
+    # Range: unified formula — 85 km at 100%
+    vs.range_km    = round(vs.battery * 0.85, 1)
 
     if vs.speed > 2.0:
         vs._side_stand     = False
         vs.side_stand      = False
         vs.side_stand_down = False
 
+    # ── Ride mode: keep as integer index ─────────────────────────
+    # physics_engine.py reads it as int — keep consistent
+    if not isinstance(vs.ride_mode, int):
+        vs.ride_mode = 0
+    vs.ride_mode_label = ["ECO", "CITY", "SPORT", "TURBO"][vs.ride_mode]
+
     _push_to_clusters(win)
 
 
-# ── Push state to every cluster widget ───────────────────────────────────────
 def _push_to_clusters(win):
-    s = vs
-
     dc = getattr(win, "digital_cluster", None)
     if dc:
         dc.update()
@@ -126,52 +117,51 @@ def _push_to_clusters(win):
     ac = getattr(win, "analog_cluster", None)
     if ac:
         try:
-            ac.set_data(s.speed, s.fuel, s.temp, s.rpm, s.odometer, s.trip)
+            ac.set_data(vs.speed, vs.fuel, vs.temp, vs.rpm, vs.odometer, vs.trip)
         except Exception as e:
             print(f"[Analog] {e}")
 
     hc = getattr(win, "hybrid_cluster", None)
     if hc:
         try:
-            hc.set_data(s.speed, s.fuel, s.temp, s.rpm, s.odometer, s.trip)
+            hc.set_data(vs.speed, vs.fuel, vs.temp, vs.rpm, vs.odometer, vs.trip)
         except Exception as e:
             print(f"[Hybrid] {e}")
 
     cp = getattr(win, "ctrl_panel", None)
     if cp:
         try:
-            cp.update_indicators(bool(s.throttle), bool(s.brake))
+            cp.update_indicators(bool(vs.throttle), bool(vs.brake))
         except Exception:
             pass
 
     for attr, text in [
-        ("_status_speed", f"{int(s.speed)} km/h"),
-        ("_status_fuel",  f"{int(s.fuel)}%"),
-        ("_status_temp",  f"{int(s.temp)}°C"),
+        ("_status_speed", f"{int(vs.speed)} km/h"),
+        ("_status_fuel",  f"{int(vs.fuel)}%"),
+        ("_status_temp",  f"{int(vs.temp)}°C"),
     ]:
         lbl = getattr(win, attr, None)
         if lbl:
             lbl.setText(text)
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
 def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
 
     win = MainWindow()
     win.setFocusPolicy(Qt.StrongFocus)
-
     _wire_keys(win)
 
+    # Stop MainWindow's own physics timer — main.py owns the physics loop
     if hasattr(win, "_physics_timer"):
         win._physics_timer.stop()
 
     print(f"[Main] Serial connected: {win.serial_reader.connected}")
     if win.serial_reader.connected:
-        print(f"[Main] Hardware path active — ESP32 pot driving clusters")
+        print(f"[Main] Hardware path active — ESP32 potentiometer driving clusters")
     else:
-        print(f"[Main] Fallback path active — use UP/DOWN keys to simulate speed")
+        print(f"[Main] Keyboard fallback — UP=accelerate, DOWN=brake")
 
     timer = QTimer()
     timer.setInterval(TICK_MS)

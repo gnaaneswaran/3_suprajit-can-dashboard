@@ -1,14 +1,21 @@
-from PyQt5.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QSizePolicy,
-    QLabel,
-    QFrame
-)
+"""
+ui/analog_cluster.py
+─────────────────────────────────────────────────────────────────────────────
+Suprajit Analog Cluster widget.
 
+Receives data via set_data() called by main_window._physics_tick().
+Does NOT import vehicle_state directly — data is pushed in, not pulled.
+If any sub-widget (fuel_gauge, speedometer, etc.) previously imported
+ui.oem_hybrid.core.vehicle_state, replace that import with:
+    from core.vehicle_state import vehicle_state as vs
+"""
+
+from PyQt5.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout,
+    QSizePolicy, QLabel, QFrame
+)
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui  import QColor
 
 from ui.oem_analog.analog_shell   import AnalogShell
 from ui.oem_analog.analog_screen  import AnalogScreen
@@ -19,38 +26,26 @@ from ui.oem_analog.widgets.indicator_panel import IndicatorPanel
 from ui.oem_analog.widgets.warning_icons import (
     HeadlightIcon,
     EngineIcon,
-    GenericWarningIcon
+    GenericWarningIcon,
 )
-
-# ── FIXED: use centralised vehicle state ─────────────────────────────────────
-# (AnalogCluster does not import vs directly — it receives data via set_data()
-#  called by main_window._physics_tick.  No duplicate import needed here.
-#  If any internal sub-widget previously imported ui.oem_hybrid.core.vehicle_state
-#  those must also be updated — see notes at bottom of file.)
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class AnalogCluster(QWidget):
 
     def __init__(self, energy_model=None, parent=None):
-
         super().__init__(parent)
 
         self.setStyleSheet("""
             background:#07090d;
             color:#d0e0f0;
         """)
-
-        self.setSizePolicy(
-            QSizePolicy.Expanding,
-            QSizePolicy.Expanding
-        )
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # HEADER
+        # ── Header ────────────────────────────────────────────────────────────
         hdr = QFrame()
         hdr.setFixedHeight(40)
         hdr.setStyleSheet("""
@@ -89,14 +84,14 @@ class AnalogCluster(QWidget):
         hl.addWidget(live)
         root.addWidget(hdr)
 
-        # MAIN SHELL
+        # ── Main shell ────────────────────────────────────────────────────────
         shell = AnalogShell()
         shell.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         body = QHBoxLayout(shell)
         body.setContentsMargins(14, 10, 14, 10)
         body.setSpacing(10)
 
-        # LEFT COLUMN
+        # Left column
         left_col = QVBoxLayout()
         left_col.setSpacing(8)
         left_col.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
@@ -109,11 +104,11 @@ class AnalogCluster(QWidget):
         left_col.addWidget(self.engine_ic)
         left_col.addStretch()
 
-        # MAIN DIAL
+        # Main dial
         self.dial = AnalogScreen()
         self.dial.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # RIGHT COLUMN
+        # Right column
         right_col = QVBoxLayout()
         right_col.setSpacing(8)
         right_col.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
@@ -131,7 +126,7 @@ class AnalogCluster(QWidget):
         body.addLayout(right_col, 0)
         root.addWidget(shell, 1)
 
-        # BOTTOM STRIP
+        # ── Bottom strip ──────────────────────────────────────────────────────
         bottom = QFrame()
         bottom.setFixedHeight(110)
         bottom.setStyleSheet("""
@@ -151,10 +146,10 @@ class AnalogCluster(QWidget):
         sl.setContentsMargins(0, 4, 0, 4)
         sl.setSpacing(6)
 
-        self.trip_lbl  = self.make_stat("TRIP A",   "0.0 km")
-        self.range_lbl = self.make_stat("RANGE",    "250 km")
-        self.temp_lbl  = self.make_stat("ENG TEMP", "45°C")
-        self.rpm_lbl   = self.make_stat("RPM",      "800")
+        self.trip_lbl  = self._make_stat("TRIP A",   "0.0 km")
+        self.range_lbl = self._make_stat("RANGE",    "250 km")
+        self.temp_lbl  = self._make_stat("ENG TEMP", "45°C")
+        self.rpm_lbl   = self._make_stat("RPM",      "800")
 
         sl.addWidget(self.trip_lbl)
         sl.addWidget(self.range_lbl)
@@ -165,34 +160,33 @@ class AnalogCluster(QWidget):
         bl.addWidget(stats_panel, 1)
         root.addWidget(bottom)
 
-    # ─────────────────────────────
+    # ── Stat row factory ──────────────────────────────────────────────────────
 
-    def make_stat(self, label, value):
+    def _make_stat(self, label: str, value: str) -> QFrame:
         frame = QFrame()
         frame.setStyleSheet("background:transparent; border:none;")
         lay = QHBoxLayout(frame)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(6)
-
         lbl = QLabel(label + ":")
         lbl.setStyleSheet("color:#334155; font-size:9px; font-weight:bold;")
-
         val = QLabel(value)
         val.setObjectName("value")
         val.setStyleSheet("color:#d7e3ef; font-size:11px; font-weight:bold;")
-
         lay.addWidget(lbl)
         lay.addWidget(val)
         lay.addStretch()
         return frame
 
-    def set_stat(self, frame, text):
+    def _set_stat(self, frame: QFrame, text: str) -> None:
         val = frame.findChild(QLabel, "value")
-        val.setText(text)
+        if val:
+            val.setText(text)
 
-    # ─────────────────────────────
+    # ── Data feed (called by main_window._physics_tick) ───────────────────────
 
-    def set_data(self, speed, fuel, temp, rpm=0, odo=0, trip=0):
+    def set_data(self, speed: float, fuel: float, temp: float,
+                 rpm: float = 0, odo: float = 0, trip: float = 0) -> None:
         self.dial.set_speed(speed)
         self.dial.set_odo(odo)
         self.dial.set_trip(trip)
@@ -200,29 +194,23 @@ class AnalogCluster(QWidget):
         self.temp_ic.set_on(temp > 95)
         self.engine_ic.set_on(temp > 108)
         self.fuel_ic.set_on(fuel < 15)
-        self.set_stat(self.trip_lbl,  f"{trip:.1f} km")
-        self.set_stat(self.range_lbl, f"{int(fuel * 2.8)} km")
-        self.set_stat(self.temp_lbl,  f"{int(temp)}°C")
-        self.set_stat(self.rpm_lbl,   f"{int(rpm)}")
+        self._set_stat(self.trip_lbl,  f"{trip:.1f} km")
+        self._set_stat(self.range_lbl, f"{int(fuel * 2.8)} km")
+        self._set_stat(self.temp_lbl,  f"{int(temp)}°C")
+        self._set_stat(self.rpm_lbl,   f"{int(rpm)}")
 
-    def update_cluster(self, speed, fuel):
+    def update_cluster(self, speed: float, fuel: float) -> None:
         self.set_data(speed, fuel, 45, 0, 0, 0)
 
-    def set_left_indicator(self, on):
+    def set_left_indicator(self, on: bool) -> None:
         self.left_ind.set_active(on)
 
-    def set_right_indicator(self, on):
+    def set_right_indicator(self, on: bool) -> None:
         self.right_ind.set_active(on)
 
-    def set_headlight(self, on):
+    def set_headlight(self, on: bool) -> None:
         self.headlight_ic.set_on(on)
 
 
-# ── IMPORTANT: if any file inside ui/oem_analog/ imports vehicle_state, ──────
-# replace:
-#   from ui.oem_hybrid.core.vehicle_state import vehicle_state as vs
-# with:
-#   from core.vehicle_state import vehicle_state as vs
-# ─────────────────────────────────────────────────────────────────────────────
-
+# Alias for backward-compatible import
 AnalogClusterWidget = AnalogCluster

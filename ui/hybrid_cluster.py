@@ -1,18 +1,13 @@
 """
 ui/hybrid_cluster.py
 ────────────────────────────────────────────────────────────────
-Suprajit CAN Bus Analyzer — HYBRID CLUSTER  v3.0
+Suprajit CAN Bus Analyzer — HYBRID CLUSTER  v3.1
 
-Fixes applied vs v2.0:
-  ✓ Needle direction corrected — clockwise from 7-o'clock (220°) to 5-o'clock (−40°/320°)
-  ✓ Speed + needle use ONE source: vs.speed (no smoothing lag for arc, only for needle draw)
-  ✓ Temperature display fixed — live from vs.temp with colour thresholds
-  ✓ Voltage / Current / Power / Efficiency removed from telemetry bar
-  ✓ CAN table collapsed behind a toggle button (default hidden)
-  ✓ Cleaner layout: large speedo left, single info card right, slim status bar bottom
-  ✓ Battery shown as horizontal fill bar with colour zones
-  ✓ Ride mode shown as coloured pill badge
-  ✓ All data exclusively from core.vehicle_state singleton
+Changes vs v3.0
+────────────────
+  ✓ date_str: replaced %-d (Linux/macOS only) with tm_mday (cross-platform).
+    Works on Windows, Linux, and macOS without ValueError.
+  ✓ All data exclusively from core.vehicle_state singleton (vs).
 ────────────────────────────────────────────────────────────────
 """
 
@@ -68,34 +63,34 @@ C = {
     "can_green": "#34d399",
 }
 
-# ── Speedometer geometry constants ────────────────────────────────────────────
-# Needle starts at 7-o'clock  = 220° in standard maths coords
-# Needle ends   at 5-o'clock  = −40° (= 320°) in standard maths coords
-# "Standard maths" = CCW from 3-o'clock.
-# Arc sweeps 260° clockwise, i.e. from 220° down to −40°.
-_NEEDLE_START_DEG = 220.0    # 0 km/h  — lower-left (7 o'clock)
-_NEEDLE_END_DEG   = -40.0    # 140 km/h — lower-right (5 o'clock)
-_NEEDLE_SWEEP     = _NEEDLE_START_DEG - _NEEDLE_END_DEG   # = 260°
+# ── Speedometer geometry ──────────────────────────────────────────────────────
+_NEEDLE_START_DEG = 220.0     # 0 km/h  — 7 o'clock
+_NEEDLE_END_DEG   = -40.0     # 140 km/h — 5 o'clock
+_NEEDLE_SWEEP     = _NEEDLE_START_DEG - _NEEDLE_END_DEG   # 260°
 _MAX_SPEED        = 140.0
 
 
 def _speed_to_angle(speed: float) -> float:
-    """Return needle angle in standard-maths degrees (CCW from 3-o'clock)."""
+    """Standard-maths degrees (CCW from 3-o'clock)."""
     ratio = max(0.0, min(1.0, speed / _MAX_SPEED))
     return _NEEDLE_START_DEG - ratio * _NEEDLE_SWEEP
 
 
-def _needle_xy(cx, cy, r, speed):
-    """Tip (x, y) of the needle for a given speed."""
-    ang = math.radians(_speed_to_angle(speed))
-    return cx + r * math.cos(ang), cy - r * math.sin(ang)
+# ── Cross-platform date helper ────────────────────────────────────────────────
+def _fmt_date() -> str:
+    """
+    Return e.g. "Fri, 30 May" — no leading zero on the day.
+    Uses tm_mday (plain int) so it works on Windows, Linux, and macOS.
+    %-d  works only on POSIX.
+    %#d  works only on Windows.
+    tm_mday is an int on every platform.
+    """
+    t = time.localtime()
+    return f"{time.strftime('%a')}, {t.tm_mday} {time.strftime('%b')}"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Helper
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 def _draw_text_c(p: QPainter, cx, cy, text, font, color):
-    """Draw text centred at (cx, cy)."""
     p.setFont(font)
     p.setPen(QColor(color))
     fm = QFontMetrics(font)
@@ -105,28 +100,21 @@ def _draw_text_c(p: QPainter, cx, cy, text, font, color):
 
 
 def _temp_color(t: float) -> str:
-    if t < 60:
-        return C["green"]
-    elif t < 90:
-        return C["yellow"]
-    else:
-        return C["red"]
+    if t < 60:   return C["green"]
+    if t < 90:   return C["yellow"]
+    return C["red"]
 
 
 def _bat_color(b: float) -> str:
-    if b >= 80:
-        return C["green"]
-    elif b >= 40:
-        return C["accent"]
-    elif b >= 20:
-        return C["orange"]
-    else:
-        return C["red"]
+    if b >= 80:  return C["green"]
+    if b >= 40:  return C["accent"]
+    if b >= 20:  return C["orange"]
+    return C["red"]
 
 
 def _mode_color(mode: str) -> str:
-    if mode == "ECO":    return C["eco"]
-    if mode == "SPORT":  return C["sport"]
+    if mode == "ECO":   return C["eco"]
+    if mode == "SPORT": return C["sport"]
     return C["city"]
 
 
@@ -134,30 +122,19 @@ def _mode_color(mode: str) -> str:
 #  Speedometer widget
 # ─────────────────────────────────────────────────────────────────────────────
 class _SpeedometerWidget(QWidget):
-    """
-    Clockwise analog speedometer.
-    - Outer coloured arc  fills with speed (green→yellow→orange→red zones)
-    - Inner battery ring  fills with battery %
-    - Needle moves CW from 7-o'clock (0) to 5-o'clock (140 km/h)
-    - Center: big speed number, mode pill, battery bar
-    - All data read live from vs — needle = vs.speed, no independent state
-    """
-
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._needle_angle  = _NEEDLE_START_DEG   # current rendered angle
+        self._needle_angle  = _NEEDLE_START_DEG
         self._sweep_active  = True
         self._sweep_forward = True
         self.setMinimumSize(300, 300)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
         t = QTimer(self)
         t.timeout.connect(self._tick)
-        t.start(16)   # ~60 fps
+        t.start(16)
 
     def _tick(self):
         if self._sweep_active:
-            # startup: sweep CW to max then back to min
             step = 5.0
             if self._sweep_forward:
                 self._needle_angle -= step
@@ -169,28 +146,22 @@ class _SpeedometerWidget(QWidget):
                     self._needle_angle = _NEEDLE_START_DEG
                     self._sweep_active = False
         else:
-            # track vs.speed with smooth interpolation
             target = _speed_to_angle(getattr(vs, "speed", 0.0))
             self._needle_angle += (target - self._needle_angle) * 0.18
         self.update()
 
     def set_speed(self, _):
-        """Called externally — actual angle is driven by vs.speed in _tick."""
-        pass
+        pass   # driven by vs.speed in _tick
 
-    # ── paint ──────────────────────────────────────────────────────────────────
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-
         W, H   = self.width(), self.height()
         cx, cy = W / 2, H / 2
         r      = min(W, H) / 2 - 16
-
         speed   = getattr(vs, "speed",           0.0)
         battery = getattr(vs, "battery",         100.0)
         mode    = getattr(vs, "ride_mode_label", "ECO")
-
         self._bg(p, cx, cy, r)
         self._arc_track(p, cx, cy, r)
         self._arc_speed(p, cx, cy, r, speed)
@@ -213,26 +184,13 @@ class _SpeedometerWidget(QWidget):
         p.setBrush(Qt.NoBrush)
         p.drawEllipse(QPointF(cx, cy), r + 13, r + 13)
 
-    # Qt drawArc uses 1/16° units, angles measured CCW from 3-o'clock
-    def _qt_arc(self, p, cx, cy, r, start_std, end_std, pen_width, color):
-        """Draw arc from start_std to end_std (standard CW sweep)."""
-        rect     = QRectF(cx - r, cy - r, 2 * r, 2 * r)
-        qt_start = int(start_std * 16)
-        qt_span  = int((end_std - start_std) * 16)   # negative = CW
-        p.setPen(QPen(QColor(color), pen_width, Qt.SolidLine, Qt.RoundCap))
-        p.drawArc(rect, qt_start, qt_span)
-
     def _arc_track(self, p, cx, cy, r):
-        # full background track (dim)
-        # Qt start = 90 − standard_start_deg, sweep = −260 (CW)
-        rect = QRectF(cx - r, cy - r, 2 * r, 2 * r)
-        p.setPen(QPen(QColor("#1a2535"), 10, Qt.SolidLine, Qt.RoundCap))
+        rect     = QRectF(cx - r, cy - r, 2 * r, 2 * r)
         qt_start = int((90 - _NEEDLE_START_DEG) * 16)
-        qt_span  = int(_NEEDLE_SWEEP * 16)            # positive in Qt = CCW, but we negate
-        p.drawArc(rect, qt_start, -qt_span)
+        p.setPen(QPen(QColor("#1a2535"), 10, Qt.SolidLine, Qt.RoundCap))
+        p.drawArc(rect, qt_start, -int(_NEEDLE_SWEEP * 16))
 
     def _arc_speed(self, p, cx, cy, r, speed):
-        """Coloured zones up to current speed."""
         zones = [
             (0,   40,  C["green"]),
             (40,  80,  C["yellow"]),
@@ -244,24 +202,22 @@ class _SpeedometerWidget(QWidget):
             if speed <= z0:
                 break
             draw_to  = min(speed, z1)
-            a_start  = _NEEDLE_START_DEG - (z0    / _MAX_SPEED) * _NEEDLE_SWEEP
+            a_start  = _NEEDLE_START_DEG - (z0      / _MAX_SPEED) * _NEEDLE_SWEEP
             a_end    = _NEEDLE_START_DEG - (draw_to / _MAX_SPEED) * _NEEDLE_SWEEP
             qt_start = int((90 - a_start) * 16)
-            qt_span  = int((a_start - a_end) * 16)    # always positive = CW in Qt
+            qt_span  = int((a_start - a_end) * 16)
             p.setPen(QPen(QColor(col), 10, Qt.SolidLine, Qt.RoundCap))
             p.drawArc(rect, qt_start, -qt_span)
 
     def _arc_battery(self, p, cx, cy, r_in, battery):
         ratio    = max(0.0, min(1.0, battery / 100.0))
         rect     = QRectF(cx - r_in, cy - r_in, 2 * r_in, 2 * r_in)
-        # track
         qt_start = int((90 - _NEEDLE_START_DEG) * 16)
         p.setPen(QPen(QColor("#162030"), 6, Qt.SolidLine, Qt.RoundCap))
-        p.drawArc(rect, qt_start, int(-_NEEDLE_SWEEP * 16))
-        # fill
+        p.drawArc(rect, qt_start, -int(_NEEDLE_SWEEP * 16))
         fill_sweep = ratio * _NEEDLE_SWEEP
         p.setPen(QPen(QColor(_bat_color(battery)), 6, Qt.SolidLine, Qt.RoundCap))
-        p.drawArc(rect, qt_start, int(-fill_sweep * 16))
+        p.drawArc(rect, qt_start, -int(fill_sweep * 16))
 
     def _ticks(self, p, cx, cy, r):
         marks = [0, 20, 40, 60, 80, 100, 120, 140]
@@ -282,13 +238,10 @@ class _SpeedometerWidget(QWidget):
         ang = math.radians(self._needle_angle)
         nx  = cx + r_needle * math.cos(ang)
         ny  = cy - r_needle * math.sin(ang)
-        # glow
         p.setPen(QPen(QColor(255, 255, 255, 35), 9, Qt.SolidLine, Qt.RoundCap))
         p.drawLine(QPointF(cx, cy), QPointF(nx, ny))
-        # needle body
         p.setPen(QPen(QColor("#e8f4ff"), 2.5, Qt.SolidLine, Qt.RoundCap))
         p.drawLine(QPointF(cx, cy), QPointF(nx, ny))
-        # hub
         p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor(C["accent"])))
         p.drawEllipse(QPointF(cx, cy), 6, 6)
@@ -296,14 +249,10 @@ class _SpeedometerWidget(QWidget):
         p.drawEllipse(QPointF(cx, cy), 2.5, 2.5)
 
     def _center(self, p, cx, cy, r, speed, battery, mode):
-        # speed value — sits above gauge centre
-        sp_font = QFont("Consolas", 40, QFont.Bold)
-        _draw_text_c(p, cx, cy - 6, str(int(speed)), sp_font, C["text_hi"])
-
-        # unit
-        u_font = QFont("Segoe UI", 9)
-        _draw_text_c(p, cx, cy + 30, "km/h", u_font, C["text_med"])
-
+        _draw_text_c(p, cx, cy - 6, str(int(speed)),
+                     QFont("Consolas", 40, QFont.Bold), C["text_hi"])
+        _draw_text_c(p, cx, cy + 30, "km/h",
+                     QFont("Segoe UI", 9), C["text_med"])
         # mode pill
         mc     = _mode_color(mode)
         pil_w, pil_h = 52, 18
@@ -315,33 +264,29 @@ class _SpeedometerWidget(QWidget):
         bg     = QColor(mc); bg.setAlpha(40)
         p.setBrush(QBrush(bg))
         p.drawPath(path)
-        m_font = QFont("Segoe UI", 8, QFont.Bold)
-        _draw_text_c(p, cx, pil_y + pil_h / 2 + 1, mode, m_font, mc)
-
-        # battery bar (horizontal, below mode pill)
+        _draw_text_c(p, cx, pil_y + pil_h / 2 + 1, mode,
+                     QFont("Segoe UI", 8, QFont.Bold), mc)
+        # battery bar
         bar_w  = r * 0.72
         bar_h  = 8
         bar_x  = cx - bar_w / 2
         bar_y  = cy + 74
-        # track
         p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor("#162030")))
-        track_path = QPainterPath()
-        track_path.addRoundedRect(QRectF(bar_x, bar_y, bar_w, bar_h), 4, 4)
-        p.drawPath(track_path)
-        # fill
+        tp = QPainterPath()
+        tp.addRoundedRect(QRectF(bar_x, bar_y, bar_w, bar_h), 4, 4)
+        p.drawPath(tp)
         fill_w = max(4, bar_w * max(0, min(1, battery / 100.0)))
         fc     = QColor(_bat_color(battery))
         fill_g = QLinearGradient(bar_x, 0, bar_x + fill_w, 0)
         fill_g.setColorAt(0, fc.darker(120))
         fill_g.setColorAt(1, fc)
         p.setBrush(QBrush(fill_g))
-        fill_path = QPainterPath()
-        fill_path.addRoundedRect(QRectF(bar_x, bar_y, fill_w, bar_h), 4, 4)
-        p.drawPath(fill_path)
-        # battery % text
-        b_font = QFont("Consolas", 8, QFont.Bold)
-        _draw_text_c(p, cx, bar_y + bar_h + 11, f"{int(battery)}%", b_font, _bat_color(battery))
+        fp = QPainterPath()
+        fp.addRoundedRect(QRectF(bar_x, bar_y, fill_w, bar_h), 4, 4)
+        p.drawPath(fp)
+        _draw_text_c(p, cx, bar_y + bar_h + 11, f"{int(battery)}%",
+                     QFont("Consolas", 8, QFont.Bold), _bat_color(battery))
 
     def _glow(self, p, cx, cy, r, speed):
         if speed < 5:
@@ -359,11 +304,9 @@ class _SpeedometerWidget(QWidget):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Info card (right panel)
+#  Info card
 # ─────────────────────────────────────────────────────────────────────────────
 class _InfoCard(QWidget):
-    """Minimal dark card: clock / date, big speed, ODO, TRIP, Range, Temp."""
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumWidth(230)
@@ -376,10 +319,9 @@ class _InfoCard(QWidget):
         p.end()
 
     def _render(self, p):
-        W, H  = self.width(), self.height()
-        PAD   = 18
+        W, H = self.width(), self.height()
+        PAD  = 18
 
-        # card background
         g = QLinearGradient(0, 0, 0, H)
         g.setColorAt(0,   QColor("#0e1a2e"))
         g.setColorAt(1.0, QColor("#060d1a"))
@@ -394,69 +336,65 @@ class _InfoCard(QWidget):
 
         y = PAD + 4
 
-        # ── Clock ─────────────────────────────────────────────────────────────
+        # Clock
         ts_str = getattr(vs, "time_string", time.strftime("%I:%M %p"))
-        _draw_text_c(p, W / 2, y + 12,
-                     ts_str, QFont("Consolas", 16, QFont.Bold), C["text_hi"])
+        _draw_text_c(p, W / 2, y + 12, ts_str,
+                     QFont("Consolas", 16, QFont.Bold), C["text_hi"])
         y += 28
 
-        date_str = f"{time.strftime('%a')}, {time.localtime().tm_mday} {time.strftime('%b')}"
-        _draw_text_c(p, W / 2, y,
-                     date_str, QFont("Segoe UI", 8), C["text_med"])
+        # Date — cross-platform (no %-d / %#d)
+        _draw_text_c(p, W / 2, y, _fmt_date(),
+                     QFont("Segoe UI", 8), C["text_med"])
         y += 18
 
-        # divider
-        self._div(p, PAD, W - PAD, y);  y += 14
+        self._div(p, PAD, W - PAD, y); y += 14
 
-        # ── Big speed ─────────────────────────────────────────────────────────
+        # Big speed
         speed = getattr(vs, "speed", 0.0)
-        _draw_text_c(p, W / 2, y + 34,
-                     str(int(speed)), QFont("Consolas", 52, QFont.Bold), C["text_hi"])
+        _draw_text_c(p, W / 2, y + 34, str(int(speed)),
+                     QFont("Consolas", 52, QFont.Bold), C["text_hi"])
         y += 64
-        _draw_text_c(p, W / 2, y,
-                     "km/h", QFont("Segoe UI", 9), C["text_med"])
+        _draw_text_c(p, W / 2, y, "km/h", QFont("Segoe UI", 9), C["text_med"])
         y += 16
 
-        self._div(p, PAD, W - PAD, y);  y += 14
+        self._div(p, PAD, W - PAD, y); y += 14
 
-        # ── Stats rows ────────────────────────────────────────────────────────
-        odo      = getattr(vs, "odometer",   0.0)
-        trip     = getattr(vs, "trip",       0.0)
-        battery  = getattr(vs, "battery",    100.0)
-        rng      = max(0, round(battery * 0.85 * 3.5))
-        temp     = getattr(vs, "temp",       42.0)
-        eng_temp = getattr(vs, "engine_temp", 42.0)
+        # Stats rows
+        odo     = getattr(vs, "odometer", 0.0)
+        trip    = getattr(vs, "trip",     0.0)
+        battery = getattr(vs, "battery",  100.0)
+        rng     = max(0, round(battery * 0.85 * 3.5))
+        temp    = getattr(vs, "temp",     42.0)
 
         rows = [
-            ("ODO",   f"{odo:,.1f} km",    C["text_hi"]),
-            ("TRIP",  f"{trip:.1f} km",    C["accent"]),
-            ("RANGE", f"{int(rng)} km",    C["eco"] if rng > 50 else C["red"]),
-            ("TEMP",  f"{int(temp)}°C",    _temp_color(temp)),
+            ("ODO",   f"{odo:,.1f} km",  C["text_hi"]),
+            ("TRIP",  f"{trip:.1f} km",  C["accent"]),
+            ("RANGE", f"{int(rng)} km",  C["eco"] if rng > 50 else C["red"]),
+            ("TEMP",  f"{int(temp)}°C",  _temp_color(temp)),
         ]
-
-        lf  = QFont("Segoe UI", 8, QFont.Bold)
-        vf  = QFont("Consolas", 12, QFont.Bold)
+        lf    = QFont("Segoe UI", 8, QFont.Bold)
+        vf    = QFont("Consolas", 12, QFont.Bold)
         row_h = 28
         for label, value, vcol in rows:
             p.setFont(lf)
             p.setPen(QColor(C["text_lo"]))
             p.drawText(PAD, int(y + 14), label)
-
             p.setFont(vf)
             p.setPen(QColor(vcol))
             fm = QFontMetrics(vf)
-            p.drawText(int(W - PAD - fm.horizontalAdvance(value)), int(y + 14), value)
+            p.drawText(int(W - PAD - fm.horizontalAdvance(value)),
+                       int(y + 14), value)
             y += row_h
 
-        self._div(p, PAD, W - PAD, y);  y += 12
+        self._div(p, PAD, W - PAD, y); y += 12
 
-        # ── Side stand ────────────────────────────────────────────────────────
-        ss    = getattr(vs, "_side_stand", False)
-        ss_on = ss and speed < 1
+        # Side stand
+        ss     = getattr(vs, "_side_stand", False)
+        ss_on  = ss and speed < 1
         ss_lbl = "⚠  SIDE STAND DOWN" if ss_on else "SIDE STAND UP"
-        ss_col = C["red"] if ss_on else C["green"]
         _draw_text_c(p, W / 2, y + 9, ss_lbl,
-                     QFont("Segoe UI", 8, QFont.Bold), ss_col)
+                     QFont("Segoe UI", 8, QFont.Bold),
+                     C["red"] if ss_on else C["green"])
 
     @staticmethod
     def _div(p, x1, x2, y):
@@ -465,15 +403,9 @@ class _InfoCard(QWidget):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Status / indicator bar
+#  Status icon bar
 # ─────────────────────────────────────────────────────────────────────────────
 class _StatusIconBar(QWidget):
-    """
-    Row of icon indicators: ABS · HIGH BEAM · LEFT · RIGHT ·
-                            SIDE STAND · BRAKE · BT · GPS · MODE
-    Grey when off, coloured when active. Blinking for turn signals.
-    """
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(32)
@@ -490,8 +422,6 @@ class _StatusIconBar(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         W, H = self.width(), self.height()
-
-        # background
         p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor("#060a14")))
         p.drawRect(0, 0, W, H)
@@ -508,31 +438,25 @@ class _StatusIconBar(QWidget):
         mode  = getattr(vs, "ride_mode_label", "ECO")
 
         icons = [
-            ("ABS",       False,  C["accent"],   False),
-            ("◀",         li,     C["eco"],       True),   # blink
-            ("HIGH BEAM", hb,     C["accent"],   False),
-            ("▶",         ri,     C["eco"],       True),   # blink
-            ("SIDE STAND",ss,     C["yellow"],    True),
-            ("BRAKE",     brake,  C["red"],       False),
-            ("BT",        bt,     C["accent"],   False),
+            ("ABS",        False, C["accent"],  False),
+            ("◀",          li,    C["eco"],      True),
+            ("HIGH BEAM",  hb,    C["accent"],   False),
+            ("▶",          ri,    C["eco"],      True),
+            ("SIDE STAND", ss,    C["yellow"],   True),
+            ("BRAKE",      brake, C["red"],      False),
+            ("BT",         bt,    C["accent"],   False),
         ]
-
-        # mode badge in centre
-        mode_c   = _mode_color(mode)
-        font_b   = QFont("Segoe UI", 7, QFont.Bold)
-        n        = len(icons)
-        slot_w   = (W - 80) / n    # leave 80px for mode badge in centre
-
+        font_b = QFont("Segoe UI", 7, QFont.Bold)
+        n      = len(icons)
+        slot_w = (W - 80) / n
         for i, (lbl, active, col, do_blink) in enumerate(icons):
             cx  = slot_w * i + slot_w / 2
             vis = active and ((not do_blink) or self._blink)
             p.setFont(font_b)
             p.setPen(QColor(col if vis else C["text_lo"]))
             fm  = QFontMetrics(font_b)
-            lw  = fm.horizontalAdvance(lbl)
-            p.drawText(int(cx - lw / 2), 20, lbl)
+            p.drawText(int(cx - fm.horizontalAdvance(lbl) / 2), 20, lbl)
 
-        # mode pill
         mc     = _mode_color(mode)
         pw, ph = 50, 16
         px     = W - 66
@@ -548,15 +472,13 @@ class _StatusIconBar(QWidget):
         fm    = QFontMetrics(QFont("Segoe UI", 7, QFont.Bold))
         mw    = fm.horizontalAdvance(mode)
         p.drawText(int(px + (pw - mw) / 2), py + 11, mode)
-
         p.end()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Telemetry bar  (RPM + TEMP only — EV-relevant)
+#  Telemetry bar
 # ─────────────────────────────────────────────────────────────────────────────
 class _TelemetryBar(QWidget):
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(46)
@@ -565,7 +487,6 @@ class _TelemetryBar(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         W, H = self.width(), self.height()
-
         p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor("#060c18")))
         p.drawRect(0, 0, W, H)
@@ -574,18 +495,15 @@ class _TelemetryBar(QWidget):
 
         rpm  = getattr(vs, "rpm",  1200.0)
         temp = getattr(vs, "temp", 42.0)
-
         items = [
-            ("RPM",      f"{int(rpm)}",      C["accent"]),
-            ("MOTOR",    f"{int(temp)}°C",   _temp_color(temp)),
-            ("AVG SPD",  f"{getattr(vs, 'avg_speed', 0.0):.0f} km/h",  C["text_med"]),
-            ("TOP SPD",  f"{getattr(vs, 'top_speed',  0.0):.0f} km/h", C["text_med"]),
+            ("RPM",     f"{int(rpm)}",                                  C["accent"]),
+            ("MOTOR",   f"{int(temp)}°C",                               _temp_color(temp)),
+            ("AVG SPD", f"{getattr(vs, 'avg_speed', 0.0):.0f} km/h",   C["text_med"]),
+            ("TOP SPD", f"{getattr(vs, 'top_speed',  0.0):.0f} km/h",  C["text_med"]),
         ]
-
-        lf     = QFont("Segoe UI", 7, QFont.Bold)
-        vf     = QFont("Consolas", 11, QFont.Bold)
-        col_w  = W / len(items)
-
+        lf    = QFont("Segoe UI", 7, QFont.Bold)
+        vf    = QFont("Consolas", 11, QFont.Bold)
+        col_w = W / len(items)
         for i, (lbl, val, col) in enumerate(items):
             cx = col_w * i + col_w / 2
             if i:
@@ -599,7 +517,6 @@ class _TelemetryBar(QWidget):
             p.setPen(QColor(col))
             fm2 = QFontMetrics(vf)
             p.drawText(int(cx - fm2.horizontalAdvance(val) / 2), 34, val)
-
         p.end()
 
 
@@ -639,33 +556,28 @@ class _CANStrip(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         W, H = self.width(), self.height()
-
         p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor("#03060d")))
         p.drawRect(0, 0, W, H)
-
-        # header
         p.setBrush(QBrush(QColor("#070d1c")))
         p.drawRect(0, 0, W, 20)
         p.setPen(QPen(QColor(C["border"]), 1))
         p.drawLine(0, 20, W, 20)
-
         hf = QFont("Segoe UI", 7, QFont.Bold)
         p.setFont(hf)
         p.setPen(QColor(C["text_lo"]))
         cols = [10, 85, 145, 200]
         for x, h in zip(cols, ["TIMESTAMP", "CAN ID", "DLC", "DATA"]):
             p.drawText(x, 14, h)
-
         p.setPen(QColor(C["can_green"]))
         p.drawText(W - 112, 14, "● CAN 500kbps")
-
-        rf  = QFont("Consolas", 8)
+        rf    = QFont("Consolas", 8)
         row_h = 18
-        id_col = {"0x100": C["accent"], "0x101": C["accent"],
-                  "0x200": C["yellow"], "0x201": C["yellow"],
-                  "0x300": C["red"],    "0x301": C["red"]}
-
+        id_col = {
+            "0x100": C["accent"], "0x101": C["accent"],
+            "0x200": C["yellow"], "0x201": C["yellow"],
+            "0x300": C["red"],    "0x301": C["red"],
+        }
         for i, (ts, cid, dlc, data) in enumerate(list(self._frames)[:(H - 22) // row_h]):
             y   = 22 + i * row_h + 13
             col = id_col.get(cid, C["can_green"])
@@ -678,12 +590,10 @@ class _CANStrip(QWidget):
             p.setPen(QColor(col));           p.drawText(cols[1], y, cid)
             p.setPen(QColor(C["text_med"])); p.drawText(cols[2], y, str(dlc))
             p.setPen(QColor(C["text_hi"]));  p.drawText(cols[3], y, data)
-
         if self._paused:
             p.setPen(QColor(C["yellow"]))
             p.setFont(QFont("Segoe UI", 7, QFont.Bold))
             p.drawText(W - 64, H - 5, "⏸  PAUSED")
-
         p.end()
 
 
@@ -698,30 +608,20 @@ class _CANToggle(QPushButton):
         self.setFixedHeight(22)
         self.setStyleSheet("""
             QPushButton {
-                background: #060a14;
-                color: #2a3a4a;
-                border: none;
-                border-top: 1px solid #1a2535;
-                font-size: 8px;
-                font-weight: bold;
-                letter-spacing: 2px;
-                text-align: center;
+                background: #060a14; color: #2a3a4a;
+                border: none; border-top: 1px solid #1a2535;
+                font-size: 8px; font-weight: bold;
+                letter-spacing: 2px; text-align: center;
             }
-            QPushButton:checked {
-                color: #34d399;
-                background: #060e18;
-            }
-            QPushButton:hover {
-                color: #38bdf8;
-            }
+            QPushButton:checked { color: #34d399; background: #060e18; }
+            QPushButton:hover   { color: #38bdf8; }
         """)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Top header bar
+#  Header bar
 # ─────────────────────────────────────────────────────────────────────────────
 class _HeaderBar(QWidget):
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(36)
@@ -735,22 +635,18 @@ class _HeaderBar(QWidget):
         p.drawRect(0, 0, W, H)
         p.setPen(QPen(QColor(C["border"]), 1))
         p.drawLine(0, H - 1, W, H - 1)
-
         p.setFont(QFont("Segoe UI", 11, QFont.Bold))
         p.setPen(QColor(C["accent"]))
         p.drawText(14, 23, "SUPRAJIT")
-
         p.setFont(QFont("Segoe UI", 7))
         p.setPen(QColor(C["text_lo"]))
         p.drawText(100, 23, "HYBRID CLUSTER")
-
-        ts   = getattr(vs, "time_string", time.strftime("%I:%M %p"))
-        tf   = QFont("Consolas", 10, QFont.Bold)
+        ts = getattr(vs, "time_string", time.strftime("%I:%M %p"))
+        tf = QFont("Consolas", 10, QFont.Bold)
         p.setFont(tf)
         p.setPen(QColor(C["text_hi"]))
-        fm   = QFontMetrics(tf)
+        fm = QFontMetrics(tf)
         p.drawText(W - fm.horizontalAdvance(ts) - 66, 23, ts)
-
         p.setFont(QFont("Segoe UI", 8, QFont.Bold))
         p.setPen(QColor(C["green"]))
         p.drawText(W - 52, 23, "● LIVE")
@@ -762,13 +658,13 @@ class _HeaderBar(QWidget):
 # ─────────────────────────────────────────────────────────────────────────────
 class HybridCluster(QWidget):
     """
-    Layout  (top → bottom):
+    Layout (top → bottom):
         [Header bar — brand / clock / LIVE badge]
-        [Speedometer (60%)  |  Info card (40%)]      ← stretches to fill
+        [Speedometer 60%  |  Info card 40%]
         [Telemetry bar — RPM / TEMP / AVG / TOP]
         [Status icon bar — indicators / mode]
         [CAN toggle button]
-        [CAN strip]  ← hidden by default, shown on toggle
+        [CAN strip — hidden by default]
     """
 
     def __init__(self, parent=None):
@@ -779,11 +675,9 @@ class HybridCluster(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # header
         self._header = _HeaderBar()
         root.addWidget(self._header)
 
-        # main body
         body = QHBoxLayout()
         body.setContentsMargins(10, 8, 10, 8)
         body.setSpacing(12)
@@ -796,30 +690,25 @@ class HybridCluster(QWidget):
         body_w.setStyleSheet(f"background:{C['bg2']};")
         root.addWidget(body_w, 1)
 
-        # telemetry
         self._telem = _TelemetryBar()
         root.addWidget(self._telem)
 
-        # status icons
         self._icons = _StatusIconBar()
         root.addWidget(self._icons)
 
-        # CAN toggle + strip
-        self._can_btn  = _CANToggle()
+        self._can_btn   = _CANToggle()
         self._can_strip = _CANStrip()
         self._can_strip.setVisible(False)
         self._can_btn.toggled.connect(self._can_strip.setVisible)
         self._can_btn.toggled.connect(
-            lambda on: self._can_btn.setText("  ▼  CAN MONITOR" if on else "  ⬛  CAN MONITOR"))
+            lambda on: self._can_btn.setText(
+                "  ▼  CAN MONITOR" if on else "  ⬛  CAN MONITOR"))
         root.addWidget(self._can_btn)
         root.addWidget(self._can_strip)
 
-        # 50 Hz refresh
         t = QTimer(self)
         t.timeout.connect(self._tick)
         t.start(20)
-
-    # ── Public API ────────────────────────────────────────────────────────────
 
     def set_data(self, speed, fuel, temp, rpm=0, odo=0, trip=0):
         """Called by main_window._physics_tick — vs is already updated."""
@@ -827,8 +716,6 @@ class HybridCluster(QWidget):
 
     def push_can_frame(self, can_id: str, dlc: int, data: str, ts: str = ""):
         self._can_strip.push_frame(can_id, dlc, data, ts)
-
-    # ── Internal tick ─────────────────────────────────────────────────────────
 
     def _tick(self):
         self._header.update()
